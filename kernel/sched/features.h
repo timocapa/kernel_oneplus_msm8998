@@ -29,7 +29,7 @@ SCHED_FEAT(LAST_BUDDY, true)
  * skip buddy i.e task called yield() is always skipped and the
  * next entity is selected to run irrespective of the vruntime
  */
-SCHED_FEAT(STRICT_SKIP_BUDDY, true)
+SCHED_FEAT(STRICT_SKIP_BUDDY, false)
 
 /*
  * Consider buddies to be cache hot, decreases the likelyness of a
@@ -110,10 +110,3 @@ SCHED_FEAT(STUNE_BOOST_BIAS_BIG, true)
  * restrictions.
  */
 SCHED_FEAT(MIN_CAPACITY_CAPPING, false)
-
-/*
- * Inflate the effective utilization of SchedTune-boosted tasks, which
- * generally leads to usage of higher frequencies.
- * If disabled, boosts will only bias tasks to higher-capacity CPUs.
- */
-SCHED_FEAT(SCHEDTUNE_BOOST_UTIL, true)

@@ -131,6 +131,8 @@ unsigned int sysctl_sched_cfs_bandwidth_slice = 5000UL;
  */
 unsigned int capacity_margin = 1280; /* ~20% */
 
+static unsigned int __maybe_unused sched_small_task_threshold = 102;
+
 static inline void update_load_add(struct load_weight *lw, unsigned long inc)
 {
 	lw->weight += inc;
@@ -3517,6 +3519,16 @@ static inline unsigned long cfs_rq_load_avg(struct cfs_rq *cfs_rq)
 
 static int idle_balance(struct rq *this_rq, struct rq_flags *rf);
 
+static inline unsigned long task_util(struct task_struct *p)
+{
+#ifdef CONFIG_SCHED_WALT
+	if (likely(!walt_disabled && sysctl_sched_use_walt_task_util))
+		return (p->ravg.demand /
+			(walt_ravg_window >> SCHED_CAPACITY_SHIFT));
+#endif
+	return READ_ONCE(p->se.avg.util_avg);
+}
+
 static inline unsigned long _task_util_est(struct task_struct *p)
 {
 	struct util_est ue = READ_ONCE(p->se.avg.util_est);
@@ -5080,6 +5092,8 @@ static inline void hrtick_update(struct rq *rq)
 #endif
 
 #ifdef CONFIG_SMP
+static inline unsigned long cpu_util(int cpu);
+
 static bool __cpu_overutilized(int cpu, int delta);
 static bool cpu_overutilized(int cpu);
 unsigned long boosted_cpu_util(int cpu);
@@ -6350,6 +6364,13 @@ static bool cpu_overutilized(int cpu)
 
 struct reciprocal_value schedtune_spc_rdiv;
 
+static int disable_boost = 0;
+
+void disable_schedtune_boost(int disable)
+{
+	disable_boost = disable;
+}
+
 static long
 schedtune_margin(unsigned long signal, long boost)
 {
@@ -6382,7 +6403,7 @@ schedtune_cpu_margin(unsigned long util, int cpu)
 {
 	int boost = schedtune_cpu_boost(cpu);
 
-	if (boost == 0)
+	if (boost == 0 || boost == 2 || disable_boost)
 		return 0;
 
 	return schedtune_margin(util, boost);
@@ -6395,7 +6416,7 @@ schedtune_task_margin(struct task_struct *task)
 	unsigned long util;
 	long margin;
 
-	if (boost == 0)
+	if (boost == 0 || boost == 2 || disable_boost)
 		return 0;
 
 	util = task_util_est(task);
@@ -6428,10 +6449,7 @@ boosted_cpu_util(int cpu)
 
 	trace_sched_boost_cpu(cpu, util, margin);
 
-	if (sched_feat(SCHEDTUNE_BOOST_UTIL))
-		return util + margin;
-	else
-		return util;
+	return util + margin;
 }
 
 static inline unsigned long
@@ -6442,10 +6460,7 @@ boosted_task_util(struct task_struct *task)
 
 	trace_sched_boost_task(task, util, margin);
 
-	if (sched_feat(SCHEDTUNE_BOOST_UTIL))
-		return util + margin;
-	else
-		return util;
+	return util + margin;
 }
 
 static unsigned long capacity_spare_without(int cpu, struct task_struct *p)
@@ -6986,6 +7001,67 @@ static int select_idle_sibling(struct task_struct *p, int prev, int target)
  	return select_idle_sibling_cstate_aware(p, prev, target);
 }
 
+/**
+ * Amount of capacity of a CPU that is (estimated to be) used by CFS tasks
+ * @cpu: the CPU to get the utilization of
+ *
+ * The unit of the return value must be the one of capacity so we can compare
+ * the utilization with the capacity of the CPU that is available for CFS task
+ * (ie cpu_capacity).
+ *
+ * cfs_rq.avg.util_avg is the sum of running time of runnable tasks plus the
+ * recent utilization of currently non-runnable tasks on a CPU. It represents
+ * the amount of utilization of a CPU in the range [0..capacity_orig] where
+ * capacity_orig is the cpu_capacity available at the highest frequency
+ * (arch_scale_freq_capacity()).
+ * The utilization of a CPU converges towards a sum equal to or less than the
+ * current capacity (capacity_curr <= capacity_orig) of the CPU because it is
+ * the running time on this CPU scaled by capacity_curr.
+ *
+ * The estimated utilization of a CPU is defined to be the maximum between its
+ * cfs_rq.avg.util_avg and the sum of the estimated utilization of the tasks
+ * currently RUNNABLE on that CPU.
+ * This allows to properly represent the expected utilization of a CPU which
+ * has just got a big task running since a long sleep period. At the same time
+ * however it preserves the benefits of the "blocked utilization" in
+ * describing the potential for other tasks waking up on the same CPU.
+ *
+ * Nevertheless, cfs_rq.avg.util_avg can be higher than capacity_curr or even
+ * higher than capacity_orig because of unfortunate rounding in
+ * cfs.avg.util_avg or just after migrating tasks and new task wakeups until
+ * the average stabilizes with the new running time. We need to check that the
+ * utilization stays within the range of [0..capacity_orig] and cap it if
+ * necessary. Without utilization capping, a group could be seen as overloaded
+ * (CPU0 utilization at 121% + CPU1 utilization at 80%) whereas CPU1 has 20% of
+ * available capacity. We allow utilization to overshoot capacity_curr (but not
+ * capacity_orig) as it useful for predicting the capacity required after task
+ * migrations (scheduler-driven DVFS).
+ *
+ * Return: the (estimated) utilization for the specified CPU
+ */
+static inline unsigned long cpu_util(int cpu)
+{
+	struct cfs_rq *cfs_rq;
+	unsigned int util;
+
+#ifdef CONFIG_SCHED_WALT
+	if (likely(!walt_disabled && sysctl_sched_use_walt_cpu_util)) {
+		util = div64_u64(cpu_rq(cpu)->cfs->cumulative_runnable_avg,
+				 walt_ravg_window >> SCHED_LOAD_SHIFT);
+
+ 		return min_t(unsigned long, util, capacity_orig_of(cpu));
+	}
+#endif
+
+	cfs_rq = &cpu_rq(cpu)->cfs;
+	util = READ_ONCE(cfs_rq->avg.util_avg);
+
+	if (sched_feat(UTIL_EST))
+		util = max(util, READ_ONCE(cfs_rq->avg.util_est.enqueued));
+
+	return min_t(unsigned long, util, capacity_orig_of(cpu));
+}
+
 /*
  * cpu_util_without: compute cpu utilization without any contributions from *p
  * @cpu: the CPU which utilization is requested
@@ -7058,7 +7134,6 @@ static unsigned long cpu_util_without(int cpu, struct task_struct *p)
 	if (sched_feat(UTIL_EST)) {
 		unsigned int estimated =
 			READ_ONCE(cfs_rq->avg.util_est.enqueued);
-#endif
 
 		/*
 		 * Despite the following checks we still have a small window
@@ -7084,6 +7159,7 @@ static unsigned long cpu_util_without(int cpu, struct task_struct *p)
 
 		util = max(util, estimated);
 	}
+#endif
 
 	/*
 	 * Utilization (estimated) can exceed the CPU capacity, thus let's
@@ -9917,7 +9993,8 @@ static struct rq *find_busiest_queue(struct lb_env *env,
 		 */
 		if (env->sd->flags & SD_ASYM_CPUCAPACITY &&
 		    capacity_of(env->dst_cpu) < capacity &&
-		    rq->nr_running == 1)
+		    (rq->nr_running == 1 || (rq->nr_running == 2 &&
+		     task_util(rq->curr) < sched_small_task_threshold)))
 			continue;
 
 		wl = weighted_cpuload(i);
