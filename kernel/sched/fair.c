@@ -7192,7 +7192,7 @@ static int start_cpu(bool boosted)
 {
 	struct root_domain *rd = cpu_rq(smp_processor_id())->rd;
 
-	if(!sched_feat(STUNE_BOOST_BIAS_BIG))
+	if (disable_boost)
 		return rd->min_cap_orig_cpu;
 
 	return boosted ? rd->max_cap_orig_cpu : rd->min_cap_orig_cpu;
@@ -7214,6 +7214,7 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	int best_idle_cpu = -1;
 	int target_cpu = -1;
 	int cpu, i;
+	struct task_struct *curr_tsk;
 
 	*backup_cpu = -1;
 
@@ -7517,6 +7518,13 @@ static inline int find_best_target(struct task_struct *p, int *backup_cpu,
 	 *   a) ACTIVE CPU: target_cpu
 	 *   b) IDLE CPU: best_idle_cpu
 	 */
+	if (target_cpu != -1 && !idle_cpu(target_cpu) &&
+			best_idle_cpu != -1) {
+		curr_tsk = READ_ONCE(cpu_rq(target_cpu)->curr);
+		if (curr_tsk && schedtune_task_boost_rcu_locked(curr_tsk)) {
+			target_cpu = best_idle_cpu;
+		}
+	}
 
 	if (prefer_idle && (best_idle_cpu != -1)) {
 		trace_sched_find_best_target(p, prefer_idle, min_util, cpu,
@@ -7706,14 +7714,11 @@ select_task_rq_fair(struct task_struct *p, int prev_cpu, int sd_flag, int wake_f
 	if (sd_flag & SD_BALANCE_WAKE) {
 		int _wake_cap = wake_cap(p, cpu, prev_cpu);
 
-		if (cpumask_test_cpu(cpu, tsk_cpus_allowed(p))) {
-			bool about_to_idle = (cpu_rq(cpu)->nr_running < 2);
-
-			if (sysctl_sched_sync_hint_enable && sync &&
-			    !_wake_cap && about_to_idle &&
-			    cpu_is_in_target_set(p, cpu))
+		if (sysctl_sched_sync_hint_enable && sync &&
+				cpumask_test_cpu(cpu, tsk_cpus_allowed(p)) &&
+				!_wake_cap && (cpu_rq(cpu)->nr_running < 2) && 
+				cpu_is_in_target_set(p, cpu))
 				return cpu;
-		}
 
 		record_wakee(p);
 		want_affine = !wake_wide(p, sibling_count_hint) &&

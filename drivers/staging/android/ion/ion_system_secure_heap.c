@@ -117,7 +117,7 @@ static int ion_system_secure_heap_allocate(struct ion_heap *heap,
 						heap);
 
 	if (!ion_heap_is_system_secure_heap_type(secure_heap->heap.type) ||
-	    !(is_cp_flag_present(flags) || (flags & ION_FLAG_SECURE))) {
+		!is_cp_flag_present(flags)) {
 		pr_info("%s: Incorrect heap type or incorrect flags\n",
 								__func__);
 		return -EINVAL;
@@ -292,8 +292,8 @@ static int __ion_system_secure_heap_resize(struct ion_heap *heap, void *ptr,
 		goto out_free;
 	}
 	list_splice_init(&items, &secure_heap->prefetch_list);
-	schedule_delayed_work(&secure_heap->prefetch_work,
-			      shrink ? msecs_to_jiffies(SHRINK_DELAY) : 0);
+	queue_delayed_work(system_unbound_wq, &secure_heap->prefetch_work,
+			   shrink ?  msecs_to_jiffies(SHRINK_DELAY) : 0);
 	spin_unlock_irqrestore(&secure_heap->work_lock, flags);
 
 	return 0;
@@ -390,7 +390,7 @@ struct ion_heap *ion_system_secure_heap_create(struct ion_platform_heap *unused)
 	if (!heap)
 		return ERR_PTR(-ENOMEM);
 	heap->heap.ops = &system_secure_heap_ops;
-	heap->heap.type = (enum ion_heap_type)ION_HEAP_TYPE_SYSTEM_SECURE;
+	heap->heap.type = ION_HEAP_TYPE_SYSTEM_SECURE;
 	heap->sys_heap = get_ion_heap(ION_SYSTEM_HEAP_ID);
 
 	heap->destroy_heap = false;
