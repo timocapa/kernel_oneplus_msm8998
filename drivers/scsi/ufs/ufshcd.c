@@ -9797,6 +9797,11 @@ static void ufshcd_suspend_clkscaling(struct ufs_hba *hba)
 
 	if (!ufshcd_is_clkscaling_supported(hba))
 		return;
+	if (!hba->is_powered)
+		goto out;
+
+	if (ufshcd_is_ufs_dev_poweroff(hba) && ufshcd_is_link_off(hba))
+		goto out;
 
 	spin_lock_irqsave(hba->host->host_lock, flags);
 	if (!hba->clk_scaling.is_suspended) {
