@@ -1795,11 +1795,6 @@ static int autosuspend_check(struct usb_device *udev)
 			 * and so they are permanently active.
 			 */
 
-			if (intf == NULL) {
-				dev_err(&udev->dev, "%s intf = NULL\n",
-						__func__);
-				return -EIO;
-			}
 			if (intf->dev.power.disable_depth)
 				continue;
 			if (atomic_read(&intf->dev.power.usage_count) > 0)
