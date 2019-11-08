@@ -176,6 +176,11 @@ void cpu_input_boost_kick_max(unsigned int duration_ms)
 	max_boost_status = true;
 
 	energy_aware_enable = false;
+
+	set_hyst_trigger_count_val(0);
+	set_hist_memory_val(0);
+	set_hyst_length_val(0);
+
 	__cpu_input_boost_kick_max(b, duration_ms);
 }
 
@@ -183,6 +188,10 @@ static void input_unboost_worker(struct work_struct *work)
 {
 	struct boost_drv *b = container_of(to_delayed_work(work),
 					   typeof(*b), input_unboost);
+
+	set_hyst_trigger_count_val(3);
+	set_hist_memory_val(20);
+	set_hyst_length_val(10);
 
 	clear_bit(INPUT_BOOST, &b->state);
 	wake_up(&b->boost_waitq);
@@ -197,6 +206,10 @@ static void max_unboost_worker(struct work_struct *work)
 	max_boost_status = false;
 
 	energy_aware_enable = true;
+
+	set_hyst_trigger_count_val(3);
+	set_hist_memory_val(20);
+	set_hyst_length_val(10);
 
 	clear_bit(MAX_BOOST, &b->state);
 	wake_up(&b->boost_waitq);
@@ -292,6 +305,10 @@ static void cpu_input_boost_input_event(struct input_handle *handle,
 					int value)
 {
 	struct boost_drv *b = handle->handler->private;
+
+	set_hyst_trigger_count_val(0);
+	set_hist_memory_val(0);
+	set_hyst_length_val(0);
 
 	__cpu_input_boost_kick(b);
 }
