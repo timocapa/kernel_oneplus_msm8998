@@ -3316,12 +3316,6 @@ update_cfs_rq_load_avg(u64 now, struct cfs_rq *cfs_rq, bool update_freq)
 	return decayed;
 }
 
-unsigned long sched_get_rt_rq_util(int cpu)
-{
-	struct rt_rq *rt_rq = &(cpu_rq(cpu)->rt);
-	return rt_rq->avg.util_avg;
-}
-
 /**
  * attach_entity_load_avg - attach this entity to its cfs_rq load avg
  * @cfs_rq: cfs_rq to attach to
@@ -5045,9 +5039,9 @@ static inline void hrtick_update(struct rq *rq)
 #ifdef CONFIG_SMP
 static bool __cpu_overutilized(int cpu, int delta);
 static bool cpu_overutilized(int cpu);
-unsigned long boosted_cpu_util(int cpu, unsigned long other_util);
+unsigned long boosted_cpu_util(int cpu);
 #else
-#define boosted_cpu_util(cpu, other_util) cpu_util_freq(cpu)
+#define boosted_cpu_util(cpu) cpu_util_freq(cpu)
 #endif
 
 static unsigned long cpu_util_without(int cpu, struct task_struct *p);
@@ -6392,9 +6386,9 @@ schedtune_task_margin(struct task_struct *task)
 #endif /* CONFIG_SCHED_TUNE */
 
 unsigned long
-boosted_cpu_util(int cpu, unsigned long other_util)
+boosted_cpu_util(int cpu)
 {
-	unsigned long util = cpu_util_freq(cpu) + other_util;
+	unsigned long util = cpu_util_freq(cpu);
 	long margin = schedtune_cpu_margin(util, cpu);
 
 	trace_sched_boost_cpu(cpu, util, margin);
@@ -7058,24 +7052,27 @@ static unsigned long cpu_util_without(int cpu, struct task_struct *p)
 	return min_t(unsigned long, util, capacity_orig_of(cpu));
 }
 
-#ifdef CONFIG_SCHED_WALT
+static inline unsigned long cpu_util_rt(int cpu)
+{
+	struct rt_rq *rt_rq = &(cpu_rq(cpu)->rt);
+
+	return rt_rq->avg.util_avg;
+}
+
 static inline unsigned long cpu_util_freq(int cpu)
 {
-	unsigned long util = cpu_rq(cpu)->cfs.avg.util_avg;
-	unsigned long capacity = capacity_orig_of(cpu);
+	unsigned long long util = cpu_util(cpu) + cpu_util_rt(cpu);
 
- 	if (unlikely(walt_disabled || !sysctl_sched_use_walt_cpu_util))
-		return cpu_util(cpu);
-
- 	return (util >= capacity) ? capacity : util;
-}
-#else
-static inline unsigned long
-cpu_util_freq(int cpu)
-{
-	return cpu_util(cpu);
-}
+#ifdef CONFIG_SCHED_WALT
+	if (likely(!walt_disabled && sysctl_sched_use_walt_cpu_util)) {
+		util = cpu_rq(cpu)->prev_runnable_sum;
+		util <<= SCHED_CAPACITY_SHIFT;
+		do_div(util, walt_ravg_window);
+	}
 #endif
+
+	return min_t(unsigned long, util, capacity_orig_of(cpu));
+}
 
 static int start_cpu(bool boosted)
 {

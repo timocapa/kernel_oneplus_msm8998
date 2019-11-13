@@ -40,20 +40,17 @@ unsigned int hyst_length_val = 10;
 
 void set_hyst_trigger_count_val(int val)
 {
-	if(!max_boost_status)
-		hyst_trigger_count_val = val;
+	hyst_trigger_count_val = val;
 }
 
 void set_hist_memory_val(int val)
 {
-	if(!max_boost_status)
-		hist_memory_val = val;
+	hist_memory_val = val;
 }
 
 void set_hyst_length_val(int val)
 {
-	if(!max_boost_status)
-		hyst_length_val = val;
+	hyst_length_val = val;
 }
 
 #define NUM_MBPS_ZONES		10

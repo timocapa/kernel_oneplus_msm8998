@@ -8,15 +8,16 @@
 #ifndef _POWER_HAL_H
 #define _POWER_HAL_H
 
-/* bool to detect if currently boosted by cpu_input_boost_kick_max() */
-extern bool max_boost_status;
+#ifdef CONFIG_CPU_INPUT_BOOST
+void powerhal_boost_kick(void);
+void powerhal_boost_kick_max(unsigned int duration_ms);
+#else
+static inline void powerhal_boost_kick(void) { }
+static inline void powerhal_boost_kick_max(unsigned int duration_ms) { }
+#endif
 
 /* CPUBW management */
 #ifdef CONFIG_DEVFREQ_GOV_QCOM_BW_HWMON
-extern unsigned int hyst_trigger_count_val;
-extern unsigned int hist_memory_val;
-extern unsigned int hyst_length_val;
-
 void set_hyst_trigger_count_val(int val);
 void set_hist_memory_val(int val);
 void set_hyst_length_val(int val);
@@ -25,5 +26,10 @@ static inline void set_hyst_trigger_count_val(int val) { }
 static inline void set_hist_memory_val(int val) { }
 static inline void set_hyst_length_val(int val) { }
 #endif
+
+/* UFS Boosting */
+extern struct Scsi_Host *ph_host;
+
+void set_ufshcd_clkgate_enable_status(u32 value);
 
 #endif /* _POWER_HAL_H */
