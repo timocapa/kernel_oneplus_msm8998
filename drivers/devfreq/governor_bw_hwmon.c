@@ -54,26 +54,6 @@ void set_hyst_length_val(int val)
 	hyst_length_val = val;
 }
 
-#include <linux/power_hal.h>
-unsigned int hyst_trigger_count_val = 3;
-unsigned int hist_memory_val = 20;
-unsigned int hyst_length_val = 10;
-
-void set_hyst_trigger_count_val(int val)
-{
-	hyst_trigger_count_val = val;
-}
-
-void set_hist_memory_val(int val)
-{
-	hist_memory_val = val;
-}
-
-void set_hyst_length_val(int val)
-{
-	hyst_length_val = val;
-}
-
 #define NUM_MBPS_ZONES		10
 struct hwmon_node {
 	unsigned int guard_band_mbps;
