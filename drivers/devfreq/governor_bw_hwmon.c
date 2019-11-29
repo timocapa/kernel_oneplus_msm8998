@@ -32,6 +32,27 @@
 #include <trace/events/power.h>
 #include "governor.h"
 #include "governor_bw_hwmon.h"
+#include <linux/binfmts.h>
+
+#include <linux/power_hal.h>
+unsigned int hyst_trigger_count_val = 3;
+unsigned int hist_memory_val = 20;
+unsigned int hyst_length_val = 10;
+
+void set_hyst_trigger_count_val(int val)
+{
+	hyst_trigger_count_val = val;
+}
+
+void set_hist_memory_val(int val)
+{
+	hist_memory_val = val;
+}
+
+void set_hyst_length_val(int val)
+{
+	hyst_length_val = val;
+}
 
 #include <linux/power_hal.h>
 unsigned int hyst_trigger_count_val = 3;
@@ -739,6 +760,9 @@ static int devfreq_bw_hwmon_get_freq(struct devfreq *df,
 					u32 *flag)
 {
 	struct hwmon_node *node = df->data;
+
+	if (task_is_booster(current))
+		return 0;
 
 	/* Suspend/resume sequence */
 	if (!node->mon_started) {

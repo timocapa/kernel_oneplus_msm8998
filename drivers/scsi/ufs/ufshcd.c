@@ -55,6 +55,7 @@
 #include <trace/events/ufs.h>
 
 #include <linux/power_hal.h>
+#include <linux/binfmts.h>
 
 struct Scsi_Host *ph_host;
 
@@ -1761,6 +1762,9 @@ static ssize_t ufshcd_clkgate_enable_store(struct device *dev,
 	unsigned long flags;
 	u32 value;
 
+	if (task_is_booster(current))
+		return count;
+
 	if (kstrtou32(buf, 0, &value))
 		return -EINVAL;
 
@@ -1785,6 +1789,8 @@ void set_ufshcd_clkgate_enable_status(u32 value)
 {
 	unsigned long flags;
 	struct ufs_hba *hba = shost_priv(ph_host);
+
+	/* Kang from ufshcd_clkgate_enable_store() */
 
 	value = !!value;
 
@@ -1851,7 +1857,7 @@ static void ufshcd_init_clk_gating(struct ufs_hba *hba)
 	hba->clk_gating.clk_gating_workq =
 		create_singlethread_workqueue(wq_name);
 
-	gating->is_enabled = true;
+	gating->is_enabled = false;
 
 	gating->delay_ms_pwr_save = UFSHCD_CLK_GATING_DELAY_MS_PWR_SAVE;
 	gating->delay_ms_perf = UFSHCD_CLK_GATING_DELAY_MS_PERF;
@@ -2270,7 +2276,7 @@ static void ufshcd_init_hibern8_on_idle(struct ufs_hba *hba)
 			  ufshcd_hibern8_exit_work);
 	}
 
-	hba->hibern8_on_idle.is_enabled = true;
+	hba->hibern8_on_idle.is_enabled = false;
 
 	hba->hibern8_on_idle.delay_attr.show =
 					ufshcd_hibern8_on_idle_delay_show;
