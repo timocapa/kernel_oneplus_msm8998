@@ -218,16 +218,13 @@ static int hid_add_usage(struct hid_parser *parser, unsigned usage, u8 size)
 		hid_err(parser->device, "usage index exceeded\n");
 		return -1;
 	}
-	if (!parser->local.usage_index && parser->global.usage_page)
-		parser->local.usage_page_preceding = 1;
-	if (parser->local.usage_page_preceding == 2)
-		parser->local.usage_page_preceding = 3;
-	if (size <= 2 && parser->global.usage_page)
-		parser->local.usage[parser->local.usage_index] =
-			(usage & 0xffff) + (parser->global.usage_page << 16);
-		complete_usage(parser, parser->local.usage_index);
-	else
-		parser->local.usage[parser->local.usage_index] = usage;
+	parser->local.usage[parser->local.usage_index] = usage;
+
+	/*
+	 * If Usage item only includes usage id, concatenate it with
+	 * currently defined usage page
+	 */
+	if (size <= 2)
 		complete_usage(parser, parser->local.usage_index);
 
 	parser->local.usage_size[parser->local.usage_index] = size;
@@ -369,8 +366,6 @@ static int hid_parser_global(struct hid_parser *parser, struct hid_item *item)
 
 	case HID_GLOBAL_ITEM_TAG_USAGE_PAGE:
 		parser->global.usage_page = item_udata(item);
-		if (parser->local.usage_page_preceding == 1)
-			parser->local.usage_page_preceding = 2;
 		return 0;
 
 	case HID_GLOBAL_ITEM_TAG_LOGICAL_MINIMUM:
@@ -554,18 +549,6 @@ static void hid_concatenate_last_usage_page(struct hid_parser *parser)
 	unsigned int usage_page;
 	unsigned int current_page;
 
-<<<<<<< HEAD
-	if (parser->local.usage_page_preceding == 3) {
-		dbg_hid("Using preceding usage page for final usage\n");
-		return;
-	}
-
-	for (i = 0; i < parser->local.usage_index; i++)
-		if (parser->local.usage_size[i] <= 2)
-			parser->local.usage[i] =
-				(parser->global.usage_page << 16)
-				+ (parser->local.usage[i] & 0xffff);
-=======
 	if (!parser->local.usage_index)
 		return;
 
@@ -586,7 +569,6 @@ static void hid_concatenate_last_usage_page(struct hid_parser *parser)
 
 		complete_usage(parser, i);
 	}
->>>>>>> v4.4.206
 }
 
 /*
@@ -2084,6 +2066,7 @@ static const struct hid_device_id hid_have_special_driver[] = {
 	{ HID_USB_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS3_CONTROLLER) },
 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS3_CONTROLLER) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS4_CONTROLLER) },
+	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS4_CONTROLLER) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS4_CONTROLLER_2) },
 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS4_CONTROLLER_2) },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_SONY, USB_DEVICE_ID_SONY_PS4_CONTROLLER_DONGLE) },
