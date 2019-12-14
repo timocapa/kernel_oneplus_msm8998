@@ -10398,6 +10398,7 @@ out_all_pinned:
 	sd->nr_balance_failed = 0;
 
 out_one_pinned:
+
 	/* tune up the balancing interval */
 	if (((env.flags & LBF_ALL_PINNED) &&
 			sd->balance_interval < MAX_PINNED_INTERVAL) ||
