@@ -218,15 +218,15 @@ static int hid_add_usage(struct hid_parser *parser, unsigned usage, u8 size)
 		hid_err(parser->device, "usage index exceeded\n");
 		return -1;
 	}
-	parser->local.usage[parser->local.usage_index] = usage;
-
-	/*
-	 * If Usage item only includes usage id, concatenate it with
-	 * currently defined usage page
-	 */
-	if (size <= 2)
-		complete_usage(parser, parser->local.usage_index);
-
+	if (!parser->local.usage_index && parser->global.usage_page)
+		parser->local.usage_page_preceding = 1;
+	if (parser->local.usage_page_preceding == 2)
+		parser->local.usage_page_preceding = 3;
+	if (size <= 2 && parser->global.usage_page)
+		parser->local.usage[parser->local.usage_index] =
+			(usage & 0xffff) + (parser->global.usage_page << 16);
+	else
+		parser->local.usage[parser->local.usage_index] = usage;
 	parser->local.usage_size[parser->local.usage_index] = size;
 	parser->local.collection_index[parser->local.usage_index] =
 		parser->collection_stack_ptr ?
@@ -588,7 +588,7 @@ static int hid_parser_main(struct hid_parser *parser, struct hid_item *item)
 	__u32 data;
 	int ret;
 
-	hid_concatenate_last_usage_page(parser);
+	hid_concatenate_usage_page(parser);
 
 	data = item_udata(item);
 
@@ -807,7 +807,7 @@ static int hid_scan_main(struct hid_parser *parser, struct hid_item *item)
 	__u32 data;
 	int i;
 
-	hid_concatenate_last_usage_page(parser);
+	hid_concatenate_usage_page(parser);
 
 	data = item_udata(item);
 
